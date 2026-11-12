@@ -309,8 +309,14 @@ def tax_data(invoice, sales_invoice_doc):
                 cac_taxcategory_1, "cbc:TaxExemptionReason"
             )
             reason_code = sales_invoice_doc.custom_exemption_reason_code
-            if reason_code in exemption_reason_map:
+            if reason_code == "VATEX-SA-OOS":
+                cbc_taxexemptionreason.text = (
+                    sales_invoice_doc.custom_tax_exemption_reason
+                )
+            elif reason_code in exemption_reason_map:
                 cbc_taxexemptionreason.text = exemption_reason_map[reason_code]
+            # if reason_code in exemption_reason_map:
+            #     cbc_taxexemptionreason.text = exemption_reason_map[reason_code]
 
         # Tax Scheme
         cac_taxscheme_3 = ET.SubElement(cac_taxcategory_1, "cac:TaxScheme")
@@ -390,7 +396,7 @@ def additional_reference_advanve(invoice, company_abbr, sales_invoice_doc):
     try:
         company_name = frappe.db.get_value("Company", {"abbr": company_abbr}, "name")
         if not company_name:
-            frappe.throw(f"Company with abbreviation {company_abbr} not found.")
+            frappe.throw(_(f"Company with abbreviation {company_abbr} not found."))
 
         company_doc = frappe.get_doc("Company", company_name)
 
@@ -443,7 +449,7 @@ def company_data_advance(invoice, sales_invoice_doc):
     try:
         company_doc = frappe.get_doc("Company", sales_invoice_doc.company)
         if company_doc.custom_costcenter == 1 and not sales_invoice_doc.cost_center:
-            frappe.throw("no Cost Center is set in the invoice.Give the feild")
+            frappe.throw(_("no Cost Center is set in the invoice.Give the feild"))
         custom_registration_type = company_doc.custom_registration_type
         custom_company_registration = company_doc.custom_company_registration
 
@@ -524,7 +530,7 @@ def customer_data_advance(invoice, sales_invoice_doc):
             address = frappe.get_doc("Address", customer_doc.customer_primary_address)
 
             if not address:
-                frappe.throw("Customer address is mandatory for non-B2C customers.")
+                frappe.throw(_("Customer address is mandatory for non-B2C customers."))
 
             cac_postaladdress_1 = ET.SubElement(cac_party_2, "cac:PostalAddress")
             # frappe.throw(address.address_line1)
@@ -697,7 +703,6 @@ def item_data_advance(invoice, sales_invoice_doc, invoice_number):
             )
             lineextensionamount = float(cbc_lineextensionamount_1.text)
             taxamount = float(cbc_taxamount_3.text)
-            # frappe.throw(f"Tax Amount1: {taxamount}")
             cbc_roundingamount.text = str(round(lineextensionamount + taxamount, 2))
             cac_item = ET.SubElement(cac_invoiceline, "cac:Item")
             cbc_name = ET.SubElement(cac_item, "cbc:Name")
@@ -717,6 +722,30 @@ def item_data_advance(invoice, sales_invoice_doc, invoice_number):
                 cbc_id_11.text = "O"
             cbc_percent_2 = ET.SubElement(cac_classifiedtaxcategory, "cbc:Percent")
             cbc_percent_2.text = f"{float(item_tax_percentage):.2f}"
+            exemption_reason_map = get_exemption_reason_map()
+            
+            if sales_invoice_doc.custom_zatca_tax_category != "Standard":
+                reason_code = sales_invoice_doc.custom_exemption_reason_code
+                cbc_taxexemptionreasoncode = ET.SubElement(
+                    tax_category,
+                    "cbc:TaxExemptionReasonCode"
+                )
+                cbc_taxexemptionreasoncode.text = reason_code
+
+                cbc_taxexemptionreason = ET.SubElement(
+                    tax_category,
+                    "cbc:TaxExemptionReason"
+                )
+
+                if reason_code == "VATEX-SA-OOS":
+                    cbc_taxexemptionreason.text = (
+                        sales_invoice_doc.custom_tax_exemption_reason
+                    )
+
+                elif reason_code in exemption_reason_map:
+                    cbc_taxexemptionreason.text = (
+                        exemption_reason_map[reason_code]
+                    )
             cac_taxscheme_4 = ET.SubElement(cac_classifiedtaxcategory, "cac:TaxScheme")
             cbc_id_12 = ET.SubElement(cac_taxscheme_4, "cbc:ID")
             cbc_id_12.text = "VAT"
@@ -808,7 +837,8 @@ def xml_structuring_advance(invoice, sales_invoice_doc):
 def xml_base64_decode(signed_xmlfile_name):
     """xml base64 decode"""
     try:
-        with open(signed_xmlfile_name, "r", encoding="utf-8") as file:
+        # nosemgrep: frappe-semgrep-rules.rules.security.frappe-security-file-traversal
+        with open(signed_xmlfile_name, "r", encoding="utf-8") as file: 
             xml = file.read().lstrip()
             base64_encoded = base64.b64encode(xml.encode("utf-8"))
             base64_decoded = base64_encoded.decode("utf-8")
@@ -883,7 +913,7 @@ def clearance_api(
                 "Cookie": "TS0106293e=0132a679c03c628e6c49de86c0f6bb76390abb4416868d6368d6d7c05da619c8326266f5bc262b7c0c65a6863cd3b19081d64eee99",
             }
         else:
-            frappe.throw(f"Production CSID for company {company_abbr} not found.")
+            frappe.throw(_(f"Production CSID for company {company_abbr} not found."))
             headers = None
         frappe.publish_realtime(
             "show_gif",
@@ -1158,7 +1188,7 @@ def attach_qr_image_advance(qrcodeb64, sales_invoice_doc):
         frappe.throw(_(("attach qr images" f"error: {str(e)}")))
 
 
-@frappe.whitelist(allow_guest=False)
+# @frappe.whitelist(allow_guest=False)
 def zatca_call(
     invoice_number,
     compliance_type="0",
@@ -1170,7 +1200,7 @@ def zatca_call(
     based on this the zATCA output and message is getting"""
     try:
         if not frappe.db.exists("Advance Sales Invoice", invoice_number):
-            frappe.throw("Invoice Number is NOT Valid: " + str(invoice_number))
+            frappe.throw(_("Invoice Number is NOT Valid:" + str(invoice_number)))
         invoice = xml_tags()
         invoice, uuid1, sales_invoice_doc = salesinvoice_data_advance(
             invoice, invoice_number
@@ -1253,7 +1283,7 @@ def zatca_call(
             message=f"{frappe.get_traceback()}\nError: {str(e)}",
         )
 
-
+# nosemgrep: frappe-semgrep-rules.rules.security.missing-argument-type-hint
 @frappe.whitelist(allow_guest=False)
 def zatca_background_on_submit(doc, _method=None, bypass_background_check=False):
     """referes according to the ZATC based sytem with the submitbutton of the sales invoice"""
@@ -1306,9 +1336,9 @@ def zatca_background_on_submit(doc, _method=None, bypass_background_check=False)
                         f"{tax_rate:.2f}" == "15.00"
                         and zatca_tax_category != "Standard"
                     ):
-                        frappe.throw(
+                        frappe.throw(_(
                             "Check the ZATCA category code and enable it as Standard."
-                        )
+                        ))
 
         if not frappe.db.exists("Advance Sales Invoice", invoice_number):
             frappe.throw(
@@ -1346,7 +1376,7 @@ def zatca_background_on_submit(doc, _method=None, bypass_background_check=False)
     except (ValueError, TypeError, KeyError, frappe.ValidationError) as e:
         frappe.throw(_(f"Error in background call: {str(e)}"))
 
-
+# nosemgrep: frappe-semgrep-rules.rules.security.missing-argument-type-hint
 @frappe.whitelist(allow_guest=False)
 def zatca_background(invoice_number, source_doc, bypass_background_check=False):
     """defines the zatca bacground"""

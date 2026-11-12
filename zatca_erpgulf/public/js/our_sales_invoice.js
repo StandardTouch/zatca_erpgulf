@@ -73,29 +73,6 @@ frappe.realtime.on('hide_gif', () => {
     $('#custom-gif-overlay').remove();
 });
 
-// frappe.ui.form.on("Sales Invoice", {
-//     refresh: function (frm) {
-//         if (frm.doc.docstatus === 1 && !["CLEARED", "REPORTED"].includes(frm.doc.custom_zatca_status)) {
-//             frm.add_custom_button(__("Send invoice to ZATCA"), function () {
-//                 frm.call({
-//                     method: "zatca_erpgulf.zatca_erpgulf.sign_invoice.zatca_background",
-//                     args: {
-//                         "invoice_number": frm.doc.name,
-//                         "source_doc": frm.doc
-
-//                     },
-//                     callback: function (r) {
-
-//                         console.log("response.message");
-//                         frm.reload_doc();
-
-//                     }
-
-
-//                 });
-//             }, __("ZATCA Phase-2"));
-//         }
-
 frappe.ui.form.on("Sales Invoice", {
     refresh: function (frm) {
         // Load the company doctype to check phase setting
@@ -107,7 +84,8 @@ frappe.ui.form.on("Sales Invoice", {
                     if (
                         frm.doc.docstatus === 1 &&
                         !["CLEARED", "REPORTED"].includes(frm.doc.custom_zatca_status) &&
-                        phase === "Phase-2"
+                        phase === "Phase-2" &&
+                        frm.doc.custom_company_country === "Saudi Arabia"
                     ) {
                         frm.add_custom_button(
                             __("Send invoice to ZATCA"),
@@ -129,74 +107,74 @@ frappe.ui.form.on("Sales Invoice", {
                     }
                 });
         }
-   
 
-        frm.page.add_menu_item(__('Print PDF-A3'), function () {
-            // Create a dialog box with fields for Print Format, Letterhead, and Language
-            const dialog = new frappe.ui.Dialog({
-                title: __('Generate PDF-A3'),
-                fields: [
-                    {
-                        fieldtype: 'Link',
-                        fieldname: 'print_format',
-                        label: __('Print Format'),
-                        options: 'Print Format',
-                        // default: 'Claudion Invoice Format', // Default print format if any
-                        reqd: 1,
-                        get_query: function () {
-                            return {
-                                filters: {
-                                    doc_type: 'Sales Invoice' // Filters print formats related to Sales Invoice
-                                }
-                            };
-                        }
-                    },
-                    {
-                        fieldtype: 'Link',
-                        fieldname: 'letterhead',
-                        label: __('Letterhead'),
-                        options: 'Letter Head', // Options should be the 'Letter Head' doctype
-                        reqd: 0
-                    },
-                    {
-                        fieldtype: 'Link',
-                        fieldname: 'language',
-                        label: __('Language'),
-                        options: 'Language', // Options should be the 'Language' doctype
-                        // default: 'en', // Default language
-                        reqd: 1
-                    }
-                ],
-                primary_action_label: __('Generate PDF-A3'),
-                primary_action: function () {
-                    const values = dialog.get_values();
-                    frappe.call({
-                        method: 'zatca_erpgulf.zatca_erpgulf.pdf_a3.embed_file_in_pdf',
-                        args: {
-                            invoice_name: frm.doc.name,
-                            print_format: values.print_format,
-                            letterhead: values.letterhead,
-                            language: values.language
-                        },
-                        callback: function (r) {
-                            if (r.message) {
-                                // Open the generated PDF in a new tab
-                                console.log(r.message)
-                                const pdf_url = r.message;
-                                window.open(pdf_url, '_blank');
-                                frm.reload_doc();
-
-                            } else {
-                                frappe.msgprint(__('Failed to generate PDF-A3'));
+        if (frm.doc.custom_company_country === "Saudi Arabia")
+            frm.page.add_menu_item(__('Print PDF-A3'), function () {
+                // Create a dialog box with fields for Print Format, Letterhead, and Language
+                const dialog = new frappe.ui.Dialog({
+                    title: __('Generate PDF-A3'),
+                    fields: [
+                        {
+                            fieldtype: 'Link',
+                            fieldname: 'print_format',
+                            label: __('Print Format'),
+                            options: 'Print Format',
+                            // default: 'Claudion Invoice Format', // Default print format if any
+                            reqd: 1,
+                            get_query: function () {
+                                return {
+                                    filters: {
+                                        doc_type: 'Sales Invoice' // Filters print formats related to Sales Invoice
+                                    }
+                                };
                             }
+                        },
+                        {
+                            fieldtype: 'Link',
+                            fieldname: 'letterhead',
+                            label: __('Letterhead'),
+                            options: 'Letter Head', // Options should be the 'Letter Head' doctype
+                            reqd: 0
+                        },
+                        {
+                            fieldtype: 'Link',
+                            fieldname: 'language',
+                            label: __('Language'),
+                            options: 'Language', // Options should be the 'Language' doctype
+                            // default: 'en', // Default language
+                            reqd: 1
                         }
+                    ],
+                    primary_action_label: __('Generate PDF-A3'),
+                    primary_action: function () {
+                        const values = dialog.get_values();
+                        frappe.call({
+                            method: 'zatca_erpgulf.zatca_erpgulf.pdf_a3.embed_file_in_pdf',
+                            args: {
+                                invoice_name: frm.doc.name,
+                                print_format: values.print_format,
+                                letterhead: values.letterhead,
+                                language: values.language
+                            },
+                            callback: function (r) {
+                                if (r.message) {
+                                    // Open the generated PDF in a new tab
+                                    console.log(r.message)
+                                    const pdf_url = r.message;
+                                    window.open(pdf_url, '_blank');
+                                    frm.reload_doc();
 
-                    });
-                    dialog.hide();
-                }
+                                } else {
+                                    frappe.msgprint(__('Failed to generate PDF-A3'));
+                                }
+                            }
+
+                        });
+                        dialog.hide();
+                    }
+                });
+                dialog.show();
             });
-            dialog.show();
-        });
 
 
 
@@ -249,6 +227,15 @@ frappe.ui.form.on('Sales Invoice', {
                 `,
                 links: [
                     "https://docs.claudion.com/Claudion-Docs/selfbilled",
+                ],
+            },
+            {
+                fieldname: "custom_zatca_pmm",
+                text: `
+                    The invoice is submitted normally in ERPNext but is not transmitted to ZATCA, allowing businesses that trade in eligible second-hand goods to manage PMM transactions separately and comply with ZATCA's Profit Margin Method VAT regulations.
+                `,
+                links: [
+                    "https://docs.claudion.com/Claudion-Docs/PMM",
                 ],
             },
         ];
@@ -445,10 +432,10 @@ frappe.ui.form.on('Sales Invoice', {
 
 
 frappe.ui.form.on('Sales Invoice', {
-    refresh: function(frm) {
-        if (!frm.is_new()) {
+    refresh: function (frm) {
+        if (!frm.is_new() && frm.doc.custom_company_country === "Saudi Arabia") {
             // Add menu item like Print PDF-A3
-            frm.page.add_menu_item(__('Create XML for Debug'), function() {
+            frm.page.add_menu_item(__('Create XML for Debug'), function () {
                 frappe.call({
                     method: "zatca_erpgulf.zatca_erpgulf.debug_xml.debug_call",
                     args: {
@@ -456,7 +443,7 @@ frappe.ui.form.on('Sales Invoice', {
                     },
                     freeze: true,
                     freeze_message: __("Generating Debug XML..."),
-                    callback: function(r) {
+                    callback: function (r) {
                         if (r.message && r.message.status === "success") {
                             frappe.msgprint(__('✅ Debug XML attached successfully!'));
                             frm.reload_doc();
@@ -467,3 +454,74 @@ frappe.ui.form.on('Sales Invoice', {
         }
     }
 });
+
+frappe.ui.form.on("Sales Invoice", {
+    refresh(frm) {
+        toggle_return_against_field(frm);
+    },
+
+    company(frm) {
+        toggle_return_against_field(frm);
+    },
+
+    is_return(frm) {
+        toggle_return_against_field(frm);
+    }
+});
+
+function toggle_return_against_field(frm) {
+    if (!frm.doc.company) {
+        frm.set_df_property("custom_return_against_for_zatca", "hidden", 1);
+        return;
+    }
+
+    frappe.db.get_value(
+        "Company",
+        frm.doc.company,
+        "custom_allow_creditnote_without_original_invoice_in_the_system"
+    ).then((r) => {
+        const show_field =
+            frm.doc.is_return == 1 &&
+            cint(r.message.custom_allow_creditnote_without_original_invoice_in_the_system) == 1;
+
+        frm.set_df_property(
+            "custom_return_against_for_zatca",
+            "hidden",
+            !show_field
+        );
+    });
+}
+
+frappe.ui.form.on('Sales Invoice', {
+    refresh(frm) {
+        frm.fields_dict.custom_zatca_pmm_warning.$wrapper.html(`
+            <div style="
+                background:#fff3cd;
+                border:1px solid #ffeeba;
+                padding:10px;
+                border-radius:4px;
+                margin-top:5px;">
+                ⚠️ <b>Important:</b> Please consult your auditor or ZATCA account manager before selecting invoice type, to ensure you are fully legally compliant and eligible to use it.
+            </div>
+        `);
+    }
+});
+
+frappe.ui.form.on("Sales Invoice", {
+    refresh(frm) {
+        if (frm.doc.docstatus === 0) set_company_country(frm);
+    },
+    company(frm) {
+        set_company_country(frm);
+    },
+});
+
+function set_company_country(frm) {
+    if (!frm.doc.company) return;
+    frappe.db.get_value("Company", frm.doc.company, "country").then(r => {
+        const country = (r.message && r.message.country) || "";
+        if (frm.doc.custom_company_country !== country) {
+            frm.set_value("custom_company_country", country);
+        }
+    });
+}

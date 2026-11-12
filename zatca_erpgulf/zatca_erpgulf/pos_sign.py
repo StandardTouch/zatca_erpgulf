@@ -693,7 +693,7 @@ def clearance_api(
         return None
 
 
-@frappe.whitelist(allow_guest=False)
+# @frappe.whitelist(allow_guest=False)
 def zatca_call(
     invoice_number,
     compliance_type="0",
@@ -705,7 +705,7 @@ def zatca_call(
     try:
 
         if not frappe.db.exists("POS Invoice", invoice_number):
-            frappe.throw("Invoice Number is NOT Valid: " + str(invoice_number))
+            frappe.throw(_("Invoice Number is NOT Valid:" + str(invoice_number)))
 
         invoice = xml_tags()
         invoice, uuid1, pos_invoice_doc = salesinvoice_data(invoice, invoice_number)
@@ -826,7 +826,7 @@ def zatca_call(
         )
 
 
-@frappe.whitelist(allow_guest=False)
+# @frappe.whitelist(allow_guest=False)
 def zatca_call_compliance(
     invoice_number,
     company_abbr,
@@ -841,7 +841,7 @@ def zatca_call_compliance(
         company_name = frappe.db.get_value("Company", {"abbr": company_abbr}, "name")
 
         if not company_name:
-            frappe.throw(f"Company with abbreviation {company_abbr} not found.")
+            frappe.throw(_(f"Company with abbreviation {company_abbr} not found."))
 
         company_doc = frappe.get_doc("Company", company_name)
 
@@ -860,7 +860,7 @@ def zatca_call_compliance(
             compliance_type = "6"
         # Validate the invoice number
         if not frappe.db.exists("POS Invoice", invoice_number):
-            frappe.throw("Invoice Number is NOT Valid1: " + str(invoice_number))
+            frappe.throw(_("Invoice Number is NOT Valid1:" + str(invoice_number)))
 
         # Fetch and process the sales invoice data
         invoice = xml_tags()
@@ -872,7 +872,7 @@ def zatca_call_compliance(
         if any_item_has_tax_template and not all(
             item.item_tax_template for item in pos_invoice_doc.items
         ):
-            frappe.throw(ITEM_TAX_TEMPLATE_WARNING)
+            frappe.throw(_(ITEM_TAX_TEMPLATE_WARNING))
 
         invoice = invoice_typecode_compliance(invoice, compliance_type)
         invoice = doc_reference_compliance(
@@ -960,7 +960,7 @@ def zatca_call_compliance(
 
 
 @frappe.whitelist(allow_guest=False)
-def zatca_background_(invoice_number, source_doc, bypass_background_check=False):
+def zatca_background_(invoice_number:str, source_doc:str=None, bypass_background_check:bool=False):
     """Function for zatca background"""
     try:
         if source_doc:
@@ -1040,9 +1040,9 @@ def zatca_background_(invoice_number, source_doc, bypass_background_check=False)
         customer_doc = frappe.get_doc("Customer", pos_invoice_doc.customer)
         if customer_doc.custom_b2c == 0:
             if not customer_doc.custom_buyer_id:
-                frappe.throw(
+                frappe.throw(_(
                     "As per ZATCA regulation- For B2B Customers, customer CR number has to be provided"
-                )
+                ))
         if customer_doc.custom_b2c != 1:
             if int(frappe.__version__.split(".", maxsplit=1)[0]) == 13:
                 if pos_invoice_doc.customer_address:
@@ -1189,7 +1189,7 @@ def zatca_background_(invoice_number, source_doc, bypass_background_check=False)
         if pos_invoice_doc.custom_zatca_status in ["REPORTED", "CLEARED"]:
             frappe.throw(_("Already submitted to Zakat and Tax Authority"))
 
-        if settings.custom_zatca_invoice_enabled != 1:
+        if settings.custom_zatca_invoice_enabled != 1 or company_doc.country != "Saudi Arabia":
             frappe.throw(
                 _(
                     "ZATCA Invoice is not enabled in Company Settings, "
@@ -1293,7 +1293,7 @@ def is_qr_and_xml_attached(sales_invoice_doc):
 
 
 @frappe.whitelist(allow_guest=False)
-def zatca_background_on_submit(doc, _method=None, bypass_background_check=False):
+def zatca_background_on_submit(doc: "dict | str", _method:  str | None = None, bypass_background_check:bool =False):
     """Function for zatca background on submit"""
 
     try:
@@ -1311,7 +1311,7 @@ def zatca_background_on_submit(doc, _method=None, bypass_background_check=False)
             frappe.throw(
                 _(f"Company abbreviation for {pos_invoice_doc.company} not found.")
             )
-        if company_doc.custom_zatca_invoice_enabled != 1:
+        if company_doc.custom_zatca_invoice_enabled != 1 or company_doc.country != "Saudi Arabia":
             # frappe.msgprint("Zatca Invoice is not enabled. Submitting the document.")
             return 
         
@@ -1396,9 +1396,9 @@ def zatca_background_on_submit(doc, _method=None, bypass_background_check=False)
         customer_doc = frappe.get_doc("Customer", pos_invoice_doc.customer)
         if customer_doc.custom_b2c == 0:
             if not customer_doc.custom_buyer_id:
-                frappe.throw(
+                frappe.throw(_(
                     "As per ZATCA regulation- For B2B Customers, customer CR number has to be provided"
-                )
+                ))
         if customer_doc.custom_b2c != 1:
             if int(frappe.__version__.split(".", maxsplit=1)[0]) == 13:
                 if pos_invoice_doc.customer_address:
@@ -1522,7 +1522,7 @@ def zatca_background_on_submit(doc, _method=None, bypass_background_check=False)
             )
         # Check if Zatca Invoice is enabled in the Company document
 
-        if company_doc.custom_zatca_invoice_enabled != 1:
+        if company_doc.custom_zatca_invoice_enabled != 1 or company_doc.country != "Saudi Arabia":
             frappe.throw(
                 _(
                     "ZATCA Invoice is not enabled in the Company settings,"
@@ -1638,7 +1638,7 @@ def zatca_background_on_submit(doc, _method=None, bypass_background_check=False)
 
 
 @frappe.whitelist()
-def resubmit_invoices_pos(invoice_numbers, bypass_background_check=False):
+def resubmit_invoices_pos(invoice_numbers:str, bypass_background_check:bool=False):
     """
     Resubmit invoices where custom_zatca_full_response contains 'RemoteDisconnected'.
     If the invoice is already submitted, call `zatca_background_on_submit`.
@@ -1666,7 +1666,7 @@ def resubmit_invoices_pos(invoice_numbers, bypass_background_check=False):
 
             # elif company_doc.custom_submit_or_not == 1:
             elif (
-                sales_invoice_doc.docstatus == 0
+                pos_invoice_doc.docstatus == 0
                 and company_doc.custom_submit_or_not == 1
                 and customer_doc.custom_b2c == 1
             ):

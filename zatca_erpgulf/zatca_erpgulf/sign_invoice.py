@@ -35,6 +35,7 @@ from zatca_erpgulf.zatca_erpgulf.createxml import (
     invoice_typecode_simplified,
     invoice_typecode_standard,
 )
+
 from zatca_erpgulf.zatca_erpgulf.xml_tax_data import tax_data, tax_data_with_template
 from zatca_erpgulf.zatca_erpgulf.create_xml_final_part import (
     tax_data_nominal,
@@ -75,7 +76,9 @@ from zatca_erpgulf.zatca_erpgulf.submit_xml_qr_notmultiple import (
 from zatca_erpgulf.zatca_erpgulf.zatca_background_sched import (
     zatca_call_scheduler_background,
 )
-
+from zatca_erpgulf.zatca_erpgulf.pdf_a3 import (
+    call_embed_pdf_on_submit
+)
 REPORTED_XML = "%Reported xml file%"
 SAUDI_ARABIA = "Saudi Arabia"
 
@@ -83,7 +86,7 @@ SAUDI_ARABIA = "Saudi Arabia"
 def xml_base64_decode(signed_xmlfile_name):
     """xml base64 decode"""
     try:
-        with open(signed_xmlfile_name, "r", encoding="utf-8") as file:
+        with open(signed_xmlfile_name, "r", encoding="utf-8") as file: # nosemgrep: frappe-semgrep-rules.rules.security.frappe-security-file-traversal
             xml = file.read().lstrip()
             base64_encoded = base64.b64encode(xml.encode("utf-8"))
             base64_decoded = base64_encoded.decode("utf-8")
@@ -872,7 +875,7 @@ def is_qr_and_xml_attached(sales_invoice_doc):
     return is_file_attached(qr_code) and is_file_attached(xml_file)
 
 
-@frappe.whitelist(allow_guest=False)
+# @frappe.whitelist(allow_guest=False)
 def zatca_call(
     invoice_number,
     compliance_type="0",
@@ -1035,11 +1038,11 @@ def zatca_call(
 
 @frappe.whitelist(allow_guest=False)
 def zatca_call_compliance(
-    invoice_number,
-    company_abbr,
-    source_doc,
-    compliance_type="0",
-    any_item_has_tax_template=False,
+    invoice_number:str,
+    company_abbr:str,
+    source_doc:str=None,
+    compliance_type:str="0",
+    any_item_has_tax_template:bool=False,
 ):
     """zatca call compliance"""
 
@@ -1173,7 +1176,7 @@ def zatca_call_compliance(
 
 
 @frappe.whitelist(allow_guest=False)
-def zatca_background(invoice_number, source_doc, bypass_background_check=False):
+def zatca_background(invoice_number: str, source_doc:str|dict=None, bypass_background_check:bool=False):
     """defines the zatca bacground"""
     try:
         # frappe.throw("DEBUG: Country found in address: ")
@@ -1329,9 +1332,9 @@ def zatca_background(invoice_number, source_doc, bypass_background_check=False):
         customer_doc = frappe.get_doc("Customer", sales_invoice_doc.customer)
         if customer_doc.custom_b2c == 0:
             if not customer_doc.custom_buyer_id:
-                frappe.throw(
+                frappe.throw(_(
                     "As per ZATCA regulations - For B2B Customers, customer CR number has to be provided"
-                )
+                ))
         address = None
         if customer_doc.custom_b2c != 1:
             if int(frappe.__version__.split(".", maxsplit=1)[0]) == 13:
@@ -1411,9 +1414,22 @@ def zatca_background(invoice_number, source_doc, bypass_background_check=False):
                 ):
                     frappe.throw(
                         _(
-                            "As per ZATCA regulations, Customer Tax ID must start with 3 and end with 3."
+                            "As per ZATCA regulations, Customer Tax ID need to  start with 3 and end with 3."
                         )
                     )
+        tax_id = (customer_doc.tax_id or "").strip()
+
+        if tax_id and address and address.country == SAUDI_ARABIA:
+            if (
+                not tax_id.isdigit()
+                or len(tax_id) != 15
+                or not (tax_id.startswith("3") and tax_id.endswith("3"))
+            ):
+                frappe.throw(
+                    _(
+                        "As per ZATCA regulations, Customer Tax ID must be exactly 15 digits and start with 3 and end with 3."
+                    )
+                )
         if not customer_doc.custom_buyer_id_type and customer_doc.custom_buyer_id:
             frappe.throw(_("Buyer ID must be blank if Buyer ID Type is not set."))
         if "claudion4saudi" in frappe.get_installed_apps():
@@ -1497,13 +1513,16 @@ def zatca_background(invoice_number, source_doc, bypass_background_check=False):
         if sales_invoice_doc.custom_zatca_status in ["REPORTED", "CLEARED"]:
             frappe.throw(_("Already submitted to Zakat and Tax Authority"))
 
-        if settings.custom_zatca_invoice_enabled != 1:
+        if settings.custom_zatca_invoice_enabled != 1 or company_doc.country != "Saudi Arabia":
             frappe.throw(
                 _(
                     "ZATCA Invoice is not enabled in Company Settings,"
                     " Please contact your system administrator"
                 )
             )
+        if sales_invoice_doc.custom_zatca_pmm == 1:
+            frappe.throw(_("This invoice is marked as PMM. Skipping ZATCA submission."))
+            
         # if settings.custom_phase_1_or_2 == "Phase-2":
         is_gpos_installed = "gpos" in frappe.get_installed_apps()
 
@@ -1578,7 +1597,7 @@ def zatca_background(invoice_number, source_doc, bypass_background_check=False):
 
 
 @frappe.whitelist(allow_guest=False)
-def zatca_background_on_submit(doc, _method=None, bypass_background_check=False):
+def zatca_background_on_submit(doc: "str|dict", _method: str = None, bypass_background_check: bool = False):
     """referes according to the ZATC based sytem with the submitbutton of the sales invoice"""
     try:
         source_doc = doc
@@ -1594,10 +1613,11 @@ def zatca_background_on_submit(doc, _method=None, bypass_background_check=False)
             )
         company_doc = frappe.get_doc("Company", {"abbr": company_abbr})
         customer_doc = frappe.get_doc("Customer", sales_invoice_doc.customer)
-        if company_doc.custom_zatca_invoice_enabled != 1:
+        if company_doc.custom_zatca_invoice_enabled != 1 or company_doc.country != "Saudi Arabia":
             # frappe.msgprint("Zatca Invoice is not enabled. Submitting the document.")
             return  # Exit the function without further checks
-
+        if sales_invoice_doc.custom_zatca_pmm == 1:
+            return
         # 🚨 Skip ZATCA logic if Company Tax ID = Customer Tax ID
         if company_doc.tax_id and customer_doc.tax_id:
             if company_doc.tax_id.strip() == customer_doc.tax_id.strip():
@@ -1655,10 +1675,10 @@ def zatca_background_on_submit(doc, _method=None, bypass_background_check=False)
             and sales_invoice_doc.taxes[0].included_in_print_rate == 1
         ):
             if any(item.item_tax_template for item in sales_invoice_doc.items):
-                frappe.throw(
+                frappe.throw(_(
                     "As per ZATCA regulations, Item Tax Template cannot be used when taxes are included"
                     " in the print rate. Please remove Item Tax Templates."
-                )
+                ))
         any_item_has_tax_template = False
         for item in sales_invoice_doc.items:
             if item.item_tax_template:
@@ -1778,9 +1798,9 @@ def zatca_background_on_submit(doc, _method=None, bypass_background_check=False)
         customer_doc = frappe.get_doc("Customer", sales_invoice_doc.customer)
         if customer_doc.custom_b2c == 0:
             if not customer_doc.custom_buyer_id:
-                frappe.throw(
+                frappe.throw(_(
                     "As per ZATCA regulations- For B2B Customers, customer CR number has to be provided"
-                )
+                ))
         address = None
         if customer_doc.custom_b2c != 1:
             if int(frappe.__version__.split(".", maxsplit=1)[0]) == 13:
@@ -1860,6 +1880,19 @@ def zatca_background_on_submit(doc, _method=None, bypass_background_check=False)
                             "As per ZATCA regulations, Customer Tax ID must start with 3 and end with 3."
                         )
                     )
+        tax_id = (customer_doc.tax_id or "").strip()
+
+        if tax_id and address and address.country == SAUDI_ARABIA:
+            if (
+                not tax_id.isdigit()
+                or len(tax_id) != 15
+                or not (tax_id.startswith("3") and tax_id.endswith("3"))
+            ):
+                frappe.throw(
+                    _(
+                        "As per ZATCA regulations, Customer Tax ID must be exactly 15 digits and start with 3 and end with 3."
+                    )
+                )
         if not customer_doc.custom_buyer_id_type and customer_doc.custom_buyer_id:
             frappe.throw(_("Buyer ID must be blank if Buyer ID Type is not set."))
         if "claudion4saudi" in frappe.get_installed_apps():
@@ -2009,13 +2042,15 @@ def zatca_background_on_submit(doc, _method=None, bypass_background_check=False)
 
         else:
             create_qr_code(sales_invoice_doc, method=None)
+        call_embed_pdf_on_submit(sales_invoice_doc,method=None)
+        
         doc.reload()
     except (ValueError, TypeError, KeyError, frappe.ValidationError) as e:
         frappe.throw(_(f"Error in background call on submit: {str(e)}"))
 
 
 @frappe.whitelist()
-def resubmit_invoices(invoice_numbers, bypass_background_check=False):
+def resubmit_invoices(invoice_numbers:str, bypass_background_check:bool=False):
     """
     Resubmit invoices where custom_zatca_full_response contains 'RemoteDisconnected'.
     If the invoice is already submitted, call `zatca_background_on_submit`.

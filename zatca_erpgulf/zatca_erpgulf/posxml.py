@@ -350,7 +350,7 @@ def get_pih_for_company(pih_data, company_name):
         for entry in pih_data.get("data", []):
             if entry.get("company") == company_name:
                 return entry.get("pih")
-        frappe.throw(_("Error while retrieving  PIH of company for production:  "))
+        frappe.throw(_("Error while retrieving  PIH of company for production:"))
     except (KeyError, AttributeError, ValueError) as e:
         frappe.throw(
             _(f"Error in getting PIH of company '{company_name}' for production: {e}")
@@ -522,7 +522,7 @@ def get_address(pos_invoice_doc, company_doc):
                 filters=[["name", "=", cost_center_doc.custom_zatca_branch_address]],
             )
             if not address_list:
-                frappe.throw("ZATCA requires a proper address. Please add")
+                frappe.throw(_("ZATCA requires a proper address. Please add"))
             if address_list:
                 return address_list[0]
 
@@ -558,7 +558,7 @@ def company_data(invoice, pos_invoice_doc):
 
         # If Company requires Cost Center but it's missing, throw an error
         if company_doc.custom_costcenter == 1 and not pos_invoice_doc.cost_center:
-            frappe.throw(_(" No Cost Center is set in the POS invoice.Give the feild"))
+            frappe.throw(_("No Cost Center is set in the POS invoice.Give the feild"))
 
         # Determine whether to fetch data from Cost Center or Company
         if company_doc.custom_costcenter == 1:
@@ -707,7 +707,7 @@ def delivery_and_paymentmeans(invoice, pos_invoice_doc, is_return):
 
         if is_return == 1:
             cbc_instructionnote = ET.SubElement(cac_paymentmeans, "cbc:InstructionNote")
-            cbc_instructionnote.text = "Cancellation"
+            cbc_instructionnote.text = pos_invoice_doc.custom_credit_note_reasoninstruction_note
         return invoice
     except (ET.ParseError, AttributeError, ValueError) as e:
         frappe.throw(_(f"Delivery and payment means failed: {e}"))
@@ -834,12 +834,12 @@ def add_document_level_discount_with_tax_template(invoice, pos_invoice_doc):
         elif vat_category == "Services outside scope of tax / Not subject to VAT":
             cbc_id.text = "O"
         else:
-            frappe.throw(
-                "Invalid or missing ZATCA VAT category in the Item Tax Template " 
-                "linked to Sales Invoice Item. Ensure each Item Tax Template " 
-                "includes one of the following categories: "
+            frappe.throw(_(
+                "Invalid or missing ZATCA VAT category in the Item Tax Template" 
+                "linked to Sales Invoice Item. Ensure each Item Tax Template" 
+                "includes one of the following categories:"
                 "'Standard', 'Zero Rated', 'Exempted', or 'Services outside scope of tax / Not subject to VAT'."
-            )
+            ))
 
         cbc_percent = ET.SubElement(cac_taxcategory, "cbc:Percent")
         cbc_percent.text = f"{tax_percentage:.2f}"
@@ -930,10 +930,9 @@ def get_exemption_reason_map():
         "VATEX-SA-EDU": "Private education to citizen.",
         "VATEX-SA-HEA": "Private healthcare to citizen.",
         "VATEX-SA-MLTRY": "Supply of qualified military goods",
-        "VATEX-SA-OOS": (
-            "The reason is a free text, has to be provided by the taxpayer on a "
-            "case-by-case basis."
-        ),
+        # "VATEX-SA-OOS": (
+        #     "Not subject to VAT"
+        # ),
     }
 
 def get_tax_wise_detail(pos_invoice_doc,single_item):
@@ -1125,8 +1124,14 @@ def tax_data(invoice, pos_invoice_doc):
                 cac_taxcategory_1, "cbc:TaxExemptionReason"
             )
             reason_code = pos_invoice_doc.custom_exemption_reason_code
-            if reason_code in exemption_reason_map:
+            if reason_code == "VATEX-SA-OOS":
+                cbc_taxexemptionreason.text = (
+                    pos_invoice_doc.custom_tax_exemption_reason
+                )
+            elif reason_code in exemption_reason_map:
                 cbc_taxexemptionreason.text = exemption_reason_map[reason_code]
+            # if reason_code in exemption_reason_map:
+            #     cbc_taxexemptionreason.text = exemption_reason_map[reason_code]
 
         # Tax Scheme
         cac_taxscheme_3 = ET.SubElement(cac_taxcategory_1, "cac:TaxScheme")
@@ -1199,8 +1204,12 @@ def tax_data(invoice, pos_invoice_doc):
             cac_legalmonetarytotal, "cbc:AllowanceTotalAmount"
         )
         cbc_allowancetotalamount.set("currencyID", pos_invoice_doc.currency)
-        cbc_allowancetotalamount.text = str(
-            abs(pos_invoice_doc.get("discount_amount", 0.0))
+
+        cbc_allowancetotalamount.text = "{:.2f}".format(
+            round(
+                abs(pos_invoice_doc.get("discount_amount", 0.0)),
+                2,
+            )
         )
 
         cbc_payableamount = ET.SubElement(cac_legalmonetarytotal, "cbc:PayableAmount")

@@ -13,7 +13,7 @@ from zatca_erpgulf.zatca_erpgulf.country_code import country_code_mapping
 
 CBC_ID = "cbc:ID"
 DS_TRANSFORM = "ds:Transform"
-
+SAUDI_ARABIA = "Saudi Arabia"
 
 def get_icv_code(invoice_number):
     """
@@ -55,6 +55,7 @@ def billing_reference_for_credit_and_debit_note(invoice, sales_invoice_doc):
         cbc_id13 = ET.SubElement(cac_invoicedocumentreference, CBC_ID)
         cbc_id13.text = (
             sales_invoice_doc.return_against
+            or sales_invoice_doc.custom_return_against_for_zatca
         )  # field from return against invoice.
 
         return invoice
@@ -537,9 +538,9 @@ def get_address(sales_invoice_doc, company_doc):
         )
 
         if not address_list:
-            frappe.throw(
+            frappe.throw(_(
                 f"ZATCA requires a proper address. Please add an address for Cost Center: {cost_center_doc.name}."
-            )
+            ))
 
         return address_list[0]  # Return the Cost Center's address
 
@@ -740,10 +741,11 @@ def customer_data(invoice, sales_invoice_doc):
         # if address and address.country == "Saudi Arabia":
         #     cbc_company_id = ET.SubElement(cac_partytaxscheme_1, "cbc:CompanyID")
         #     cbc_company_id.text = customer_doc.tax_id
-         # Only add CompanyID if custom_buyer_id is not set
-        if not customer_doc.custom_buyer_id:
+                 # Only add CompanyID for Saudi customers - ZATCA BR-KSA-44 requires
+        # BT-48 to be a 15-digit KSA VAT number starting and ending with 3
+        if customer_doc.tax_id and address and address.country == SAUDI_ARABIA:
             cbc_company_id = ET.SubElement(cac_partytaxscheme_1, "cbc:CompanyID")
-            cbc_company_id.text = customer_doc.tax_id 
+            cbc_company_id.text = customer_doc.tax_id
 
 
         # Always include tax scheme
@@ -786,7 +788,7 @@ def delivery_and_payment_means(invoice, sales_invoice_doc, is_return):
             cbc_instruction_note = ET.SubElement(
                 cac_payment_means, "cbc:InstructionNote"
             )
-            cbc_instruction_note.text = "Cancellation or Returned"
+            cbc_instruction_note.text = sales_invoice_doc.custom_credit_note_reasoninstruction_note
         
         if sales_invoice_doc.is_debit_note == 1 :
             cbc_instruction_note = ET.SubElement(
@@ -974,12 +976,12 @@ def add_document_level_discount_with_tax_template(invoice, sales_invoice_doc):
         elif vat_category_code == "Services outside scope of tax / Not subject to VAT":
             cbc_id.text = "O"
         else:
-            frappe.throw(
-                "Invalid or missing ZATCA VAT category in the Item Tax Template " 
-                "linked to Sales Invoice Item. Ensure each Item Tax Template " 
-                "includes one of the following categories: "
+            frappe.throw(_(
+                "Invalid or missing ZATCA VAT category in the Item Tax Template" 
+                "linked to Sales Invoice Item. Ensure each Item Tax Template" 
+                "includes one of the following categories:"
                 "'Standard', 'Zero Rated', 'Exempted', or 'Services outside scope of tax / Not subject to VAT'."
-            )
+            ))
 
         cbc_percent = ET.SubElement(cac_tax_category, "cbc:Percent")
         cbc_percent.text = f"{tax_percentage:.2f}"

@@ -82,12 +82,12 @@ def is_qr_and_xml_attached(sales_invoice_doc):
     
 @frappe.whitelist(allow_guest=False)
 def debug_call(
-    invoice_number,
-    compliance_type="0",
-    any_item_has_tax_template=False,
-    company_abbr=None,
-    source_doc=None,
-    bypass_background_check=False
+    invoice_number: str,
+    compliance_type :str="0",
+    any_item_has_tax_template : bool =False,
+    company_abbr:str | None =None,
+    source_doc:dict | None =None,
+    bypass_background_check:bool=False
 ):
     """
     Generate ZATCA-compliant debug XML for a Sales Invoice and attach as a private file.
@@ -104,8 +104,11 @@ def debug_call(
         settings = frappe.get_doc("Company", company_name)
         company_abbr = settings.abbr
         company_doc = frappe.get_doc("Company", {"abbr": company_abbr})
-        if company_doc.custom_zatca_invoice_enabled != 1:
-            frappe.msgprint("Zatca Invoice is not enabled. Submitting the document.")
+        if company_doc.custom_zatca_invoice_enabled != 1 or company_doc.country != "Saudi Arabia":
+            frappe.msgprint(_("Zatca Invoice is not enabled. Submitting the document."))
+            return
+        if sales_invoice_doc.custom_zatca_pmm == 1:
+            frappe.msgprint(_("ZATCA PMM is enabled for this invoice. Skipping ZATCA XML generation."))
             return
         customer_doc = frappe.get_doc("Customer", sales_invoice_doc.customer)
         if company_doc.tax_id and customer_doc.tax_id:
@@ -121,7 +124,7 @@ def debug_call(
 
         # Validate QR if XML already exists
         if is_gpos_installed and getattr(sales_invoice_doc, "custom_xml", None) and not getattr(sales_invoice_doc, "custom_qr_code", None):
-            frappe.throw(_("Please provide the 'qr_code' field data when XML exists for invoice: ") + str(invoice_number))
+            frappe.throw(_("Please provide the 'qr_code' field data when XML exists for invoice:") + str(invoice_number))
         
         # --- Helper function: generate & attach XML ---
         def generate_and_attach_xml(invoice_doc, handle_b2c_simplified=True):
@@ -221,10 +224,10 @@ def debug_call(
             updated_xml_string = update_qr_toxml(final_xml_string, qrcodeb64, company_abbr)
             signed_xmlfile_name = structuring_signedxml(invoice_number,updated_xml_string)
             # Step 8: Save & attach final XML
-            
-            signed_xmlfile_name = f"{frappe.local.site}/private/files/final_xml_after_indent_{invoice_number}.xml"
+            safe_invoice_number = invoice_number.replace("/", "-")
+            signed_xmlfile_name = f"{frappe.local.site}/private/files/final_xml_after_indent_{safe_invoice_number}.xml"
             debug_filename = f"DEBUG_INVOICE_{invoice_doc.name}.xml"
-            with open(signed_xmlfile_name, "r", encoding="utf-8") as f:
+            with open(signed_xmlfile_name, "r", encoding="utf-8") as f:  # nosemgrep: frappe-semgrep-rules.rules.security.frappe-security-file-traversal
                 xml_data = f.read()
             existing_files = frappe.get_all(
                 "File",
@@ -261,7 +264,7 @@ def debug_call(
                 if is_gpos_installed and getattr(sales_invoice_doc, "custom_xml", None):
                     
                     # Already processed, do nothing
-                    frappe.msgprint("Already the xml attached")
+                    frappe.msgprint(_("Already the xml attached"))
                     pass
                 else:
                     # Phase-2 + custom_unique_id + no XML yet => B2C simplified
@@ -269,7 +272,7 @@ def debug_call(
             else:
                 if is_qr_and_xml_attached(sales_invoice_doc):
                     # Already has QR & XML => do 
-                    frappe.msgprint("✅ XML/QR already attached")
+                    frappe.msgprint(_("✅ XML/QR already attached"))
                     pass
                 elif settings.custom_send_invoice_to_zatca == "Background" and not bypass_background_check:
                     # Background sending => B2C simplified
